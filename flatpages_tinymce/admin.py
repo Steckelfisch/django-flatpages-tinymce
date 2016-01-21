@@ -3,14 +3,23 @@ from django.utils.translation import ugettext_lazy as _
 from django.core.urlresolvers import reverse
 from django import forms
 from django.contrib import admin
-from django.contrib.auth.decorators import permission_required
 from django.contrib.flatpages.models import FlatPage
 from django.contrib.flatpages import admin as flatpages_admin
 from tinymce.widgets import TinyMCE
 from flatpages_tinymce import settings
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponse, Http404
-from django.conf.urls.defaults import patterns, url
+try:
+    # django 1.5 and before
+    from django.conf.urls.defaults import patterns, url
+    import warnings
+    # warnings.simplefilter('once', DeprecationWarning, append=True)
+    from django.utils.deprecation import RemovedInDjango110Warning
+    warnings.warn('django.conf.urls.defaults is removed from 1.6 onward',
+                  RemovedInDjango110Warning, stacklevel=2)
+except ImportError:
+    # django 1.6 and beyond
+    from django.conf.urls import patterns, url
 from django.views.decorators.csrf import csrf_protect
 
 
@@ -18,11 +27,9 @@ class FlatPageAdmin(flatpages_admin.FlatPageAdmin):
     # @csrf_protect
     def __init__(self, *args, **kwargs):
         super(FlatPageAdmin, self).__init__(*args, **kwargs)
+        self.ajax_save = csrf_protect(self._ajax_save)
 
-        # Once Django 1.4 is commonplace, add raise_exception=True to permission_required.
-        self.ajax_save = csrf_protect(permission_required('flatpages.change_flatpage')(self._ajax_save))
-
-    @transaction.commit_on_success
+    # @transaction.commit_on_success
     def _ajax_save(self, request):
         try:
             page_id = int(request.REQUEST.get("id", 0))
@@ -52,7 +59,7 @@ class FlatPageAdmin(flatpages_admin.FlatPageAdmin):
                 attrs={'cols': 80, 'rows': 30},
                     mce_attrs={'external_link_list_url': reverse('tinymce.views.flatpages_link_list')},
                     ))
-        elif db_field.name == "template_name" and settings.USE_TEMPLATE_DROPDOWN:
+        elif db_field.name == "template_name":
             prev_field = super(FlatPageAdmin, self).formfield_for_dbfield(db_field, **kwargs)
             return forms.FilePathField(label=prev_field.label,
                                        path=settings.TEMPLATE_DIR,
@@ -63,9 +70,8 @@ class FlatPageAdmin(flatpages_admin.FlatPageAdmin):
         return super(FlatPageAdmin, self).formfield_for_dbfield(db_field, **kwargs)
     # redefining
     fieldsets = (
-        (None, {'fields': ('url', 'title', 'content', 'sites')}),
-        (_('Advanced options'), {'classes': ('collapse',), 'fields': ('enable_comments',
-                                                    'registration_required', 'template_name')}),
+        (None, {'fields': ('url', 'title', 'content', 'sites', 'template_name')}),
+        (_('Advanced options'), {'classes': ('collapse',), 'fields': ('enable_comments', 'registration_required')}),
     )
 
 admin.site.unregister(FlatPage)
